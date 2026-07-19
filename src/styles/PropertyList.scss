@@ -1,0 +1,10 @@
+.property-list__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.property-list__table th,
+.property-list__table td {
+  border: 1px solid rgb(14, 130, 20);
+  padding: 8px;
+}

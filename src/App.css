@@ -1,0 +1,157 @@
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 30px;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.app-header h1 {
+  margin: 0 0 15px;
+  font-size: 42px;
+}
+
+.app-header button {
+  padding: 7px 16px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.property-table {
+  width: 100%;
+  margin-top: 28px;
+  border-collapse: collapse;
+}
+
+.property-table th,
+.property-table td {
+  padding: 14px;
+  border: 1px solid #999;
+  text-align: center;
+}
+
+.property-table th {
+  font-size: 20px;
+}
+
+.property-table td {
+  font-size: 18px;
+}
+
+.property-table button {
+  padding: 4px 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.property-form-area {
+  max-width: 700px;
+  margin: 30px auto;
+  padding: 24px;
+  border: 1px solid #999;
+  background-color: #fff;
+}
+
+.property-form-area h2 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.form-row label {
+  padding: 8px;
+  font-weight: bold;
+}
+
+.form-row input,
+.form-row select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px;
+  font-size: 16px;
+}
+
+.form-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.form-buttons button {
+  padding: 8px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.photo-form-area {
+  max-width: 700px;
+  margin: 30px auto;
+  padding: 24px;
+  border: 1px solid #999;
+  background-color: #fff;
+}
+
+.photo-form-area h2 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.property-summary {
+  margin-bottom: 20px;
+  padding: 12px 18px;
+  border: 1px solid #bbb;
+}
+
+.property-summary p {
+  margin: 6px 0;
+}
+
+.photo-number-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.photo-number-table th,
+.photo-number-table td {
+  border: 1px solid #999;
+  padding: 10px;
+}
+
+.photo-number-table th:first-child,
+.photo-number-table td:first-child {
+  width: 45%;
+}
+
+.photo-number-table input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  font-size: 18px;
+}
+
+.save-message {
+  margin: 16px 0 0;
+  text-align: center;
+  font-weight: bold;
+}
+
+.form-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.list-message {
+  margin-top: 30px;
+  text-align: center;
+  font-size: 18px;
+}
