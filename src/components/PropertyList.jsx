@@ -54,9 +54,6 @@ function PropertyList() {
 
         /*
          * 検査日が2日前以前の物件を抽出する
-         *
-         * inspectionDateがYYYY-MM-DD形式なら、
-         * 文字列のまま日付比較できます。
          */
         const expiredProperties = propertyList.filter((property) => {
           if (!property.inspectionDate) {
@@ -67,14 +64,16 @@ function PropertyList() {
         });
 
         /*
-         * 古い物件をFirestoreから削除する
+         * 古い物件情報と写真番号をFirestoreから削除する
          */
         if (expiredProperties.length > 0) {
           try {
             await Promise.all(
-              expiredProperties.map((property) =>
+              expiredProperties.flatMap((property) => [
                 deleteDoc(doc(db, "properties", property.id)),
-              ),
+
+                deleteDoc(doc(db, "propertyPhotos", property.id)),
+              ]),
             );
           } catch (error) {
             console.error("期限切れ物件の自動削除エラー:", error);
@@ -105,6 +104,7 @@ function PropertyList() {
         console.error("物件一覧の読み込みエラー:", error);
 
         setErrorMessage("物件一覧を読み込めませんでした。");
+
         setIsLoading(false);
       },
     );
@@ -122,6 +122,12 @@ function PropertyList() {
     navigate(`/property/edit/${propertyId}`);
   };
 
+  /**
+   * 手動削除
+   *
+   * propertiesとpropertyPhotosの
+   * 両方を削除する
+   */
   const handleDelete = async (event, propertyId) => {
     event.stopPropagation();
 
@@ -132,9 +138,14 @@ function PropertyList() {
     }
 
     try {
-      await deleteDoc(doc(db, "properties", propertyId));
+      await Promise.all([
+        deleteDoc(doc(db, "properties", propertyId)),
+
+        deleteDoc(doc(db, "propertyPhotos", propertyId)),
+      ]);
     } catch (error) {
       console.error("物件削除エラー:", error);
+
       alert("物件を削除できませんでした。");
     }
   };
@@ -172,7 +183,6 @@ function PropertyList() {
                 <th>物件名</th>
                 <th>検査日</th>
                 <th>検査種別</th>
-
                 <th>操作</th>
               </tr>
             </thead>
@@ -185,8 +195,11 @@ function PropertyList() {
                   onClick={() => openPhotoNumberPage(property.id)}
                 >
                   <td>{property.managementNumber}</td>
+
                   <td>{property.propertyName}</td>
+
                   <td>{property.inspectionDate}</td>
+
                   <td>{property.inspectionType}</td>
 
                   <td>

@@ -4,6 +4,7 @@
 
   &__container {
     position: relative;
+
     max-width: 1200px;
     margin: 0 auto;
     padding: 12px 20px;
@@ -12,12 +13,44 @@
     align-items: center;
   }
 
+  &__settings {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: white;
+    text-decoration: none;
+
+    background: transparent;
+    border-radius: 50%;
+    padding: 6px;
+
+    &:hover {
+      color: #fde047;
+      background: transparent;
+    }
+
+    &.active {
+      color: #f7f7f5;
+      background: transparent;
+    }
+  }
+
+  // 物件一覧・新規登録を右端へ配置
+  &__menu {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+
+    margin-left: auto;
+  }
+
   &__toggle {
     display: none;
 
     margin-left: auto;
-
     padding: 4px 8px;
+
     color: white;
     font-size: 30px;
     line-height: 1;
@@ -29,15 +62,8 @@
     cursor: pointer;
   }
 
-  &__menu {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-
-    margin-left: auto;
-  }
-
   &__link {
+    display: inline-block;
     padding: 8px 14px;
 
     color: white;
@@ -65,9 +91,6 @@
     &__container {
       min-height: 56px;
       padding: 8px 12px;
-
-      display: flex;
-      justify-content: flex-end;
     }
 
     &__toggle {
@@ -84,6 +107,7 @@
       z-index: 1000;
 
       width: 180px;
+      margin-left: 0;
       padding: 10px;
 
       flex-direction: column;
@@ -104,6 +128,12 @@
       box-sizing: border-box;
       padding: 12px 14px;
       text-align: center;
+    }
+
+    // 左側の「写真項目設定」は横幅いっぱいにしない
+    &__container > &__link {
+      width: auto;
+      padding: 8px 12px;
     }
   }
 }

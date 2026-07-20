@@ -1,21 +1,31 @@
-import { useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { db } from "../firebase";
 
-const getTomorrow = () => {
-  const date = new Date();
+/**
+ * 明日の日付をYYYY-MM-DD形式で作成する
+ */
+function getTomorrowDate() {
+  const tomorrow = new Date();
 
-  // 日本時間で翌日にする
-  date.setDate(date.getDate() + 1);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const year = tomorrow.getFullYear();
+
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+
+  const day = String(tomorrow.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
-};
+}
 
+/**
+ * 空の物件情報
+ */
 const createEmptyFormData = () => ({
   managementNumber: "",
-  inspectionDate: getTomorrow(),
+  inspectionDate: getTomorrowDate(),
   propertyName: "",
   inspectionType: "",
   address: "",
@@ -23,22 +33,80 @@ const createEmptyFormData = () => ({
 });
 
 function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
-  const [formData, setFormData] = useState(() => {
-    const data = {
-      ...createEmptyFormData(),
-      ...(initialData ?? {}),
-    };
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState(() => ({
+    ...createEmptyFormData(),
+    ...(initialData ?? {}),
+  }));
 
-    if (!data.inspectionDate) {
-      data.inspectionDate = getTomorrow();
-    }
+  const [inspectionTypes, setInspectionTypes] = useState([]);
 
-    return data;
-  });
+  const [isLoadingInspectionTypes, setIsLoadingInspectionTypes] =
+    useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
 
+  /**
+   * Firestoreから検査種別一覧を取得
+   */
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadInspectionTypes() {
+      try {
+        setIsLoadingInspectionTypes(true);
+
+        const snapshot = await getDocs(collection(db, "photoItemSettings"));
+
+        const nextInspectionTypes = snapshot.docs
+          .map((documentSnapshot) => {
+            const data = documentSnapshot.data();
+
+            return String(data.inspectionType ?? documentSnapshot.id).trim();
+          })
+          .filter((inspectionType) => inspectionType !== "")
+          .filter(
+            (inspectionType, index, array) =>
+              array.indexOf(inspectionType) === index,
+          )
+          .sort((first, second) => first.localeCompare(second, "ja"));
+
+        if (!isActive) {
+          return;
+        }
+
+        setInspectionTypes(nextInspectionTypes);
+      } catch (error) {
+        console.error("検査種別読み込みエラー:", error);
+
+        if (!isActive) {
+          return;
+        }
+
+        setErrorMessage(
+          `検査種別を読み込めませんでした：${
+            error.code ?? error.message ?? "不明なエラー"
+          }`,
+        );
+      } finally {
+        if (isActive) {
+          setIsLoadingInspectionTypes(false);
+        }
+      }
+    }
+
+    loadInspectionTypes();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  /**
+   * 入力内容変更
+   */
   const handleChange = (event) => {
     const { name, value } = event.target;
 
@@ -46,13 +114,27 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
       ...previous,
       [name]: value,
     }));
+
+    setErrorMessage("");
   };
 
+  /**
+   * フォーム送信
+   */
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    if (isSaving) {
+      return;
+    }
+
     if (!formData.managementNumber.trim()) {
       setErrorMessage("管理番号を入力してください。");
+      return;
+    }
+
+    if (!formData.inspectionDate) {
+      setErrorMessage("検査日を入力してください。");
       return;
     }
 
@@ -61,32 +143,57 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
       return;
     }
 
+    if (!formData.inspectionType) {
+      setErrorMessage("検査種別を選択してください。");
+      return;
+    }
+
     try {
       setIsSaving(true);
       setErrorMessage("");
 
-      const { id: propertyId, createdAt, updatedAt, ...saveData } = formData;
+      if (typeof onSave !== "function") {
+        throw new Error("保存処理が設定されていません。");
+      }
 
-      await onSave(saveData);
+      await onSave({
+        ...formData,
+
+        managementNumber: formData.managementNumber.trim(),
+
+        propertyName: formData.propertyName.trim(),
+
+        address: formData.address.trim(),
+
+        supervisor: formData.supervisor.trim(),
+      });
     } catch (error) {
       console.error("物件保存エラー:", error);
+
       setErrorMessage(
-        isEditMode
-          ? "物件情報を更新できませんでした。"
-          : "物件情報を登録できませんでした。",
+        `物件を保存できませんでした：${
+          error.code ?? error.message ?? "不明なエラー"
+        }`,
       );
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleBack = () => {
+    if (typeof onClose === "function") {
+      onClose();
+      return;
+    }
+
+    navigate("/");
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="property-form">
-      <h2>{isEditMode ? "物件情報の編集" : "新規物件登録"}</h2>
+    <form className="property-form" onSubmit={handleSubmit}>
+      <h2>{isEditMode ? "物件情報編集" : "新規物件登録"}</h2>
 
-      {errorMessage && <p className="property-form__error">{errorMessage}</p>}
-
-      <div className="property-form__field">
+      <div className="form-group">
         <label htmlFor="managementNumber">管理番号</label>
 
         <input
@@ -95,10 +202,12 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.managementNumber}
           onChange={handleChange}
+          disabled={isSaving}
+          autoFocus
         />
       </div>
 
-      <div className="property-form__field">
+      <div className="form-group">
         <label htmlFor="inspectionDate">検査日</label>
 
         <input
@@ -107,10 +216,11 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="date"
           value={formData.inspectionDate}
           onChange={handleChange}
+          disabled={isSaving}
         />
       </div>
 
-      <div className="property-form__field">
+      <div className="form-group">
         <label htmlFor="propertyName">物件名</label>
 
         <input
@@ -119,10 +229,11 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.propertyName}
           onChange={handleChange}
+          disabled={isSaving}
         />
       </div>
 
-      <div className="property-form__field">
+      <div className="form-group">
         <label htmlFor="inspectionType">検査種別</label>
 
         <select
@@ -130,22 +241,67 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           name="inspectionType"
           value={formData.inspectionType}
           onChange={handleChange}
+          disabled={isSaving || isLoadingInspectionTypes}
         >
-          <option value="">選択してください</option>
-          <option value="配筋検査">配筋検査</option>
-          <option value="上棟検査">上棟検査</option>
-          <option value="防水検査">防水検査</option>
-          <option value="完了検査">完了検査</option>
+          <option value="">
+            {isLoadingInspectionTypes ? "読み込み中..." : "選択してください"}
+          </option>
+
+          {/*
+           * 編集中の古い検査種別が
+           * 設定から削除されていても表示する
+           */}
+          {formData.inspectionType &&
+            !inspectionTypes.includes(formData.inspectionType) && (
+              <option value={formData.inspectionType}>
+                {formData.inspectionType}
+                （現在は設定なし）
+              </option>
+            )}
+
+          {inspectionTypes.map((inspectionType) => (
+            <option key={inspectionType} value={inspectionType}>
+              {inspectionType}
+            </option>
+          ))}
         </select>
       </div>
 
-      <div className="property-form__buttons">
-        <button type="submit" disabled={isSaving}>
-          {isSaving ? "保存中..." : isEditMode ? "変更を保存" : "登録"}
+      <div className="form-group">
+        <label htmlFor="address">住所</label>
+
+        <input
+          id="address"
+          name="address"
+          type="text"
+          value={formData.address}
+          onChange={handleChange}
+          disabled={isSaving}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="supervisor">監督者</label>
+
+        <input
+          id="supervisor"
+          name="supervisor"
+          type="text"
+          value={formData.supervisor}
+          onChange={handleChange}
+          disabled={isSaving}
+        />
+      </div>
+
+      {errorMessage && <p className="error-message">{errorMessage}</p>}
+
+      <div className="form-buttons">
+        <button type="button" onClick={handleBack} disabled={isSaving}>
+          戻る
         </button>
 
-        <button type="button" onClick={onClose} disabled={isSaving}>
-          キャンセル
+        <button type="submit" disabled={isSaving || isLoadingInspectionTypes}>
+          {isSaving ? "保存中..." : isEditMode ? "更新" : "登録"}
         </button>
       </div>
     </form>

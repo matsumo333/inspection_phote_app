@@ -1,62 +1,118 @@
-import { doc, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 
 import { db } from "../firebase";
 
-const photoItemSettings = {
-  配筋検査: [
-    "全景",
-    "基礎全景",
-    "配筋状況",
-    "主筋",
-    "補強筋",
-    "かぶり厚さ",
-    "アンカーボルト",
-  ],
+/**
+ * 検査種別を比較用の文字列へ変換する
+ *
+ * 例：
+ * 「躯体検査」→「躯体」
+ * 「 躯体 」→「躯体」
+ */
+function normalizeInspectionType(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\s\u3000]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/検査$/g, "");
+}
 
-  上棟検査: [
-    "全景",
-    "基礎",
-    "土台と基礎",
-    "柱脚金物",
-    "柱頭金物",
-    "筋交い金物",
-    "横架材",
-    "小屋裏1",
-    "小屋裏2",
-    "小屋裏3",
-    "床釘ピッチ",
-    "火打金物",
-    "垂木金物",
-  ],
+/**
+ * Firestoreに登録する写真項目設定
+ *
+ * inspectionTypeは、物件登録画面で使用している
+ * 検査種別と同じ名称にしてください。
+ */
+const photoItemSettings = [
+  {
+    inspectionType: "躯体検査",
 
-  防水検査: [
-    "建物全景",
-    "屋根防水",
-    "外壁防水",
-    "防水シート",
-    "防水テープ",
-    "サッシまわり",
-    "バルコニー防水",
-    "配管貫通部",
-  ],
-};
+    items: [
+      "全景",
+      "基礎",
+      "土台と基礎",
+      "柱脚金物",
+      "柱頭金物",
+      "筋交い金物",
+      "横架材",
+      "小屋裏1",
+      "小屋裏2",
+      "小屋裏3",
+      "床釘ピッチ",
+      "火打金物",
+      "垂木金物",
+    ],
+  },
 
+  {
+    inspectionType: "防水検査",
+
+    items: [
+      "建物全景",
+      "外壁防水紙",
+      "防水紙の重ね",
+      "サッシ周囲",
+      "配管貫通部",
+      "バルコニー防水",
+      "軒先",
+      "ケラバ",
+    ],
+  },
+
+  {
+    inspectionType: "配筋検査",
+
+    items: [
+      "建物全景",
+      "基礎全景",
+      "底盤配筋",
+      "立上り配筋",
+      "人通口補強",
+      "開口補強",
+      "アンカーボルト",
+      "かぶり厚さ",
+    ],
+  },
+
+  {
+    inspectionType: "完了検査",
+
+    items: ["建物全景", "玄関", "外壁", "屋根", "バルコニー", "設備", "室内"],
+  },
+];
+
+/**
+ * 写真項目設定をFirestoreへ登録する
+ */
 export async function initializePhotoItemSettings() {
-  const registrationPromises = Object.entries(photoItemSettings).map(
-    ([inspectionType, labels]) => {
-      const items = labels.map((label, index) => ({
-        id: `item-${index + 1}`,
-        label,
-        order: index + 1,
-      }));
+  for (const setting of photoItemSettings) {
+    const normalizedInspectionType = normalizeInspectionType(
+      setting.inspectionType,
+    );
 
-      return setDoc(doc(db, "photoItemSettings", inspectionType), {
-        inspectionType,
-        items,
-        updatedAt: new Date(),
-      });
-    },
-  );
+    const settingReference = doc(
+      db,
+      "photoItemSettings",
+      normalizedInspectionType,
+    );
 
-  await Promise.all(registrationPromises);
+    await setDoc(
+      settingReference,
+      {
+        inspectionType: setting.inspectionType,
+
+        normalizedInspectionType,
+
+        items: setting.items,
+
+        updatedAt: serverTimestamp(),
+      },
+      {
+        merge: true,
+      },
+    );
+  }
+
+  console.log("写真項目設定をFirestoreへ登録しました。");
 }
