@@ -1,7 +1,9 @@
 import { collection, getDocs } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { db } from "../firebase";
+import { parseInspectionPdf } from "../utils/parseInspectionPdf";
 
 /**
  * 明日の日付をYYYY-MM-DD形式で作成する
@@ -12,9 +14,7 @@ function getTomorrowDate() {
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   const year = tomorrow.getFullYear();
-
   const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
-
   const day = String(tomorrow.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
@@ -32,20 +32,25 @@ const createEmptyFormData = () => ({
   supervisor: "",
 });
 
-function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
+function PropertyForm({
+  initialData,
+  onSave,
+  onBulkSave,
+  onClose,
+  isEditMode = false,
+}) {
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState(() => ({
     ...createEmptyFormData(),
     ...(initialData ?? {}),
   }));
 
   const [inspectionTypes, setInspectionTypes] = useState([]);
-
   const [isLoadingInspectionTypes, setIsLoadingInspectionTypes] =
     useState(true);
-
   const [isSaving, setIsSaving] = useState(false);
-
+  const [isReadingPdf, setIsReadingPdf] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   /**
@@ -85,11 +90,9 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           return;
         }
 
-        setErrorMessage(
-          `検査種別を読み込めませんでした：${
-            error.code ?? error.message ?? "不明なエラー"
-          }`,
-        );
+        const message = error instanceof Error ? error.message : String(error);
+
+        setErrorMessage(`検査種別を読み込めませんでした：${message}`);
       } finally {
         if (isActive) {
           setIsLoadingInspectionTypes(false);
@@ -119,12 +122,89 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
   };
 
   /**
-   * フォーム送信
+   * PDFから複数の物件情報を取得して保存
+   */
+  const handlePdfImport = async (event) => {
+    const file = event.target.files?.[0];
+
+    // 同じPDFを続けて選択できるようにする
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      setIsReadingPdf(true);
+      setErrorMessage("");
+
+      console.log("PDFの読み取りを開始します:", file.name);
+
+      const properties = await parseInspectionPdf(file, inspectionTypes);
+
+      console.log("PDFから取得したデータ:", properties);
+
+      if (!Array.isArray(properties)) {
+        throw new Error("PDFの解析結果が配列ではありません。");
+      }
+
+      if (properties.length === 0) {
+        throw new Error("PDFから物件情報を取得できませんでした。");
+      }
+
+      const details = properties
+        .map((property, index) => {
+          return (
+            `${index + 1}. ${property.inspectionDate ?? ""}\n` +
+            `${property.managementNumber ?? ""}\n` +
+            `${property.propertyName ?? ""}\n` +
+            `${property.inspectionType ?? ""}`
+          );
+        })
+        .join("\n\n");
+
+      const shouldSave = window.confirm(
+        `${properties.length}件を読み取りました。\n\n` +
+          `${details}\n\n` +
+          "すべて登録しますか？",
+      );
+
+      if (!shouldSave) {
+        console.log("PDF一括登録をキャンセルしました。");
+        return;
+      }
+
+      if (typeof onBulkSave !== "function") {
+        throw new Error("PDF一括保存処理が設定されていません。");
+      }
+
+      console.log("一括保存処理を呼び出します。");
+
+      const savedCount = await onBulkSave(properties);
+
+      console.log("一括保存が完了しました:", savedCount);
+
+      window.alert(`${savedCount}件を登録しました。`);
+
+      navigate("/");
+    } catch (error) {
+      console.error("PDF一括登録エラー:", error);
+
+      const message = error instanceof Error ? error.message : String(error);
+
+      setErrorMessage(`PDFを登録できませんでした：${message}`);
+    } finally {
+      setIsReadingPdf(false);
+    }
+  };
+
+  /**
+   * 通常の1件保存
    */
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (isSaving) {
+    if (isSaving || isReadingPdf) {
       return;
     }
 
@@ -158,28 +238,26 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
 
       await onSave({
         ...formData,
-
         managementNumber: formData.managementNumber.trim(),
-
         propertyName: formData.propertyName.trim(),
-
+        inspectionType: formData.inspectionType.trim(),
         address: formData.address.trim(),
-
         supervisor: formData.supervisor.trim(),
       });
     } catch (error) {
       console.error("物件保存エラー:", error);
 
-      setErrorMessage(
-        `物件を保存できませんでした：${
-          error.code ?? error.message ?? "不明なエラー"
-        }`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+
+      setErrorMessage(`物件を保存できませんでした：${message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
+  /**
+   * 戻る
+   */
   const handleBack = () => {
     if (typeof onClose === "function") {
       onClose();
@@ -189,9 +267,29 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
     navigate("/");
   };
 
+  const isFormBusy = isSaving || isReadingPdf || isLoadingInspectionTypes;
+
   return (
     <form className="property-form" onSubmit={handleSubmit}>
       <h2>{isEditMode ? "物件情報編集" : "新規物件登録"}</h2>
+
+      {!isEditMode && (
+        <div className="form-group">
+          <label htmlFor="inspectionPdf">検査予定PDFから入力</label>
+
+          <input
+            id="inspectionPdf"
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={handlePdfImport}
+            disabled={isFormBusy}
+          />
+
+          {isReadingPdf && (
+            <p className="loading-message">PDFを読み取っています...</p>
+          )}
+        </div>
+      )}
 
       <div className="form-group">
         <label htmlFor="managementNumber">管理番号</label>
@@ -202,7 +300,7 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.managementNumber}
           onChange={handleChange}
-          disabled={isSaving}
+          disabled={isSaving || isReadingPdf}
           autoFocus
         />
       </div>
@@ -216,7 +314,7 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="date"
           value={formData.inspectionDate}
           onChange={handleChange}
-          disabled={isSaving}
+          disabled={isSaving || isReadingPdf}
         />
       </div>
 
@@ -229,7 +327,7 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.propertyName}
           onChange={handleChange}
-          disabled={isSaving}
+          disabled={isSaving || isReadingPdf}
         />
       </div>
 
@@ -241,16 +339,12 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           name="inspectionType"
           value={formData.inspectionType}
           onChange={handleChange}
-          disabled={isSaving || isLoadingInspectionTypes}
+          disabled={isFormBusy}
         >
           <option value="">
             {isLoadingInspectionTypes ? "読み込み中..." : "選択してください"}
           </option>
 
-          {/*
-           * 編集中の古い検査種別が
-           * 設定から削除されていても表示する
-           */}
           {formData.inspectionType &&
             !inspectionTypes.includes(formData.inspectionType) && (
               <option value={formData.inspectionType}>
@@ -276,7 +370,7 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.address}
           onChange={handleChange}
-          disabled={isSaving}
+          disabled={isSaving || isReadingPdf}
         />
       </div>
 
@@ -289,19 +383,29 @@ function PropertyForm({ initialData, onSave, onClose, isEditMode = false }) {
           type="text"
           value={formData.supervisor}
           onChange={handleChange}
-          disabled={isSaving}
+          disabled={isSaving || isReadingPdf}
         />
       </div>
 
       {errorMessage && <p className="error-message">{errorMessage}</p>}
 
       <div className="form-buttons">
-        <button type="button" onClick={handleBack} disabled={isSaving}>
+        <button
+          type="button"
+          onClick={handleBack}
+          disabled={isSaving || isReadingPdf}
+        >
           戻る
         </button>
 
-        <button type="submit" disabled={isSaving || isLoadingInspectionTypes}>
-          {isSaving ? "保存中..." : isEditMode ? "更新" : "登録"}
+        <button type="submit" disabled={isFormBusy}>
+          {isSaving
+            ? "保存中..."
+            : isReadingPdf
+              ? "PDF読込中..."
+              : isEditMode
+                ? "更新"
+                : "登録"}
         </button>
       </div>
     </form>

@@ -73,6 +73,9 @@ function PropertyFormPage() {
     };
   }, [id, isEditMode]);
 
+  /**
+   * 1件保存
+   */
   const handleSave = async (formData) => {
     console.log("保存するデータ:", formData);
     console.log("編集モード:", isEditMode);
@@ -98,6 +101,85 @@ function PropertyFormPage() {
     }
 
     navigate("/");
+  };
+
+  /**
+   * PDFから読み取った複数件を一括保存
+   */
+  const handleBulkSave = async (properties) => {
+    if (!Array.isArray(properties)) {
+      throw new Error("登録データの形式が正しくありません。");
+    }
+
+    if (properties.length === 0) {
+      throw new Error("登録する物件情報がありません。");
+    }
+
+    console.log("PDF一括登録を開始します:", properties);
+
+    let savedCount = 0;
+
+    for (const [index, property] of properties.entries()) {
+      const managementNumber = String(property.managementNumber ?? "").trim();
+
+      const inspectionDate = String(property.inspectionDate ?? "").trim();
+
+      const propertyName = String(property.propertyName ?? "").trim();
+
+      const inspectionType = String(property.inspectionType ?? "").trim();
+
+      const address = String(property.address ?? "").trim();
+
+      const supervisor = String(property.supervisor ?? "").trim();
+
+      if (!managementNumber) {
+        throw new Error(`${index + 1}件目の管理番号が空です。`);
+      }
+
+      if (!inspectionDate) {
+        throw new Error(`${managementNumber} の検査日が空です。`);
+      }
+
+      if (!propertyName) {
+        throw new Error(`${managementNumber} の物件名が空です。`);
+      }
+
+      if (!inspectionType) {
+        throw new Error(`${managementNumber} の検査種別が空です。`);
+      }
+
+      const saveData = {
+        managementNumber,
+        inspectionDate,
+        propertyName,
+        inspectionType,
+        address,
+        supervisor,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      console.log(`${index + 1}件目を登録します:`, saveData);
+
+      try {
+        const documentReference = await addDoc(
+          collection(db, "properties"),
+          saveData,
+        );
+
+        savedCount += 1;
+
+        console.log(`${index + 1}件目を登録しました:`, documentReference.id);
+      } catch (error) {
+        console.error(`${index + 1}件目の登録エラー:`, error);
+
+        throw error;
+      }
+    }
+
+    console.log(`${savedCount}件を一括登録しました。`);
+
+    return savedCount;
   };
 
   const handleClose = () => {
@@ -130,6 +212,7 @@ function PropertyFormPage() {
         key={id ?? "new"}
         initialData={initialData}
         onSave={handleSave}
+        onBulkSave={handleBulkSave}
         onClose={handleClose}
         isEditMode={isEditMode}
       />

@@ -394,8 +394,6 @@ function PhotoItemSettingsPage() {
           新しい検査種別を設ける場合は下記枠に入力し、検査種別を追加ボタンを押してください。
         </a>
 
-        <label htmlFor="newInspectionType">新しい検査種別</label>
-
         <div className="inspection-type-add-row">
           <input
             id="newInspectionType"
