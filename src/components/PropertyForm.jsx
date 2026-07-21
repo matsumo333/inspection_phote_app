@@ -47,10 +47,14 @@ function PropertyForm({
   }));
 
   const [inspectionTypes, setInspectionTypes] = useState([]);
+
   const [isLoadingInspectionTypes, setIsLoadingInspectionTypes] =
     useState(true);
+
   const [isSaving, setIsSaving] = useState(false);
+
   const [isReadingPdf, setIsReadingPdf] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
 
   /**
@@ -122,12 +126,14 @@ function PropertyForm({
   };
 
   /**
-   * PDFから複数の物件情報を取得して保存
+   * PDFから複数物件を読み取り、一括保存する
    */
   const handlePdfImport = async (event) => {
     const file = event.target.files?.[0];
 
-    // 同じPDFを続けて選択できるようにする
+    /*
+     * 同じPDFを続けて選択できるようにする
+     */
     event.target.value = "";
 
     if (!file) {
@@ -138,14 +144,14 @@ function PropertyForm({
       setIsReadingPdf(true);
       setErrorMessage("");
 
-      console.log("PDFの読み取りを開始します:", file.name);
+      console.log("PDF読み取り開始:", file.name);
 
       const properties = await parseInspectionPdf(file, inspectionTypes);
 
-      console.log("PDFから取得したデータ:", properties);
+      console.log("PDFから読み取った物件:", properties);
 
       if (!Array.isArray(properties)) {
-        throw new Error("PDFの解析結果が配列ではありません。");
+        throw new Error("PDF解析結果の形式が正しくありません。");
       }
 
       if (properties.length === 0) {
@@ -170,7 +176,6 @@ function PropertyForm({
       );
 
       if (!shouldSave) {
-        console.log("PDF一括登録をキャンセルしました。");
         return;
       }
 
@@ -178,11 +183,7 @@ function PropertyForm({
         throw new Error("PDF一括保存処理が設定されていません。");
       }
 
-      console.log("一括保存処理を呼び出します。");
-
       const savedCount = await onBulkSave(properties);
-
-      console.log("一括保存が完了しました:", savedCount);
 
       window.alert(`${savedCount}件を登録しました。`);
 
@@ -238,10 +239,15 @@ function PropertyForm({
 
       await onSave({
         ...formData,
+
         managementNumber: formData.managementNumber.trim(),
+
         propertyName: formData.propertyName.trim(),
+
         inspectionType: formData.inspectionType.trim(),
+
         address: formData.address.trim(),
+
         supervisor: formData.supervisor.trim(),
       });
     } catch (error) {

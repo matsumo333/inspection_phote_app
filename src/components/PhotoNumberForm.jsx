@@ -11,22 +11,13 @@ import {
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { db } from "../firebase";
+import { normalizeInspectionType } from "../utils/inspectionTypeUtils";
 
 /**
- * 検査種別を比較しやすい文字へ変換する
- */
-function normalizeInspectionType(value) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/[\s\u3000]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/検査$/g, "");
-}
-
-/**
- * Firestoreから検査種別に対応する写真項目を読み込む
+ * Firestoreから検査種別に対応する
+ * 写真項目を読み込む
  */
 async function loadPhotoItemsFromFirestore(inspectionType) {
   const normalizedInspectionType = normalizeInspectionType(inspectionType);
@@ -76,7 +67,8 @@ function createInitialPhotoNumbers(savedPhotoNumbers, photoItems) {
 }
 
 /**
- * 現在表示中の項目だけを保存データにする
+ * 現在表示中の項目だけを
+ * 保存データにする
  */
 function createPhotoNumbersForSave(photoNumbers, photoItems) {
   const filteredPhotoNumbers = {};
@@ -89,9 +81,12 @@ function createPhotoNumbersForSave(photoNumbers, photoItems) {
 }
 
 function PhotoNumberForm({ propertyData, onBack, onSaved }) {
-  const inspectionType = propertyData?.inspectionType ?? "";
   const navigate = useNavigate();
+
+  const inspectionType = propertyData?.inspectionType ?? "";
+
   const [photoItems, setPhotoItems] = useState([]);
+
   const [photoNumbers, setPhotoNumbers] = useState({});
 
   const [isLoadingItems, setIsLoadingItems] = useState(true);
@@ -124,13 +119,13 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         }
 
         /*
-         * 検査種別に対応した写真項目を取得
+         * 検査種別に対応した写真項目
          */
         const nextPhotoItems =
           await loadPhotoItemsFromFirestore(inspectionType);
 
         /*
-         * 物件に保存済みの写真番号を取得
+         * 物件ごとの保存済み写真番号
          */
         const propertyPhotoReference = doc(
           db,
@@ -158,6 +153,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         inputRefs.current = [];
 
         setPhotoItems(nextPhotoItems);
+
         setPhotoNumbers(nextPhotoNumbers);
       } catch (error) {
         console.error("写真項目読み込みエラー:", error);
@@ -169,9 +165,10 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         setPhotoItems([]);
         setPhotoNumbers({});
 
-        setLoadError(
-          `写真項目を読み込めませんでした：${error.message ?? "不明なエラー"}`,
-        );
+        const errorText =
+          error instanceof Error ? error.message : String(error);
+
+        setLoadError(`写真項目を読み込めませんでした：${errorText}`);
       } finally {
         if (isActive) {
           setIsLoadingItems(false);
@@ -259,7 +256,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       };
 
       /*
-       * 新規作成時だけcreatedAtを追加する
+       * 新規作成時だけcreatedAtを追加
        */
       if (!existingSnapshot.exists()) {
         saveData.createdAt = serverTimestamp();
@@ -274,24 +271,28 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       window.setTimeout(() => {
         if (typeof onSaved === "function") {
           onSaved();
+          return;
         }
+
+        navigate("/");
       }, 1000);
     } catch (error) {
       console.error("写真番号保存エラー:", error);
 
-      setMessage(
-        `保存できませんでした：${
-          error.code ?? error.message ?? "不明なエラー"
-        }`,
-      );
+      const errorText = error instanceof Error ? error.message : String(error);
+
+      setMessage(`保存できませんでした：${errorText}`);
     } finally {
       setIsSaving(false);
     }
   };
 
+  /**
+   * 戻る
+   */
   const handleBack = () => {
-    if (typeof onClose === "function") {
-      onClose();
+    if (typeof onBack === "function") {
+      onBack();
       return;
     }
 
@@ -360,7 +361,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       {message && <p className="save-message">{message}</p>}
 
       <div className="form-buttons">
-        <button type="button" onClick={() => navigate("/")} disabled={isSaving}>
+        <button type="button" onClick={handleBack} disabled={isSaving}>
           戻る
         </button>
 
