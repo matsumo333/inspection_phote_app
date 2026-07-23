@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 
 import { db } from "../firebase";
 import { normalizeInspectionType } from "../utils/inspectionTypeUtils";
@@ -80,6 +81,32 @@ function createPhotoNumbersForSave(photoNumbers, photoItems) {
   return filteredPhotoNumbers;
 }
 
+/**
+ * ファイル名に使えない文字を置き換える
+ */
+function sanitizeFileName(value) {
+  const text = String(value ?? "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim();
+
+  return text || "写真番号";
+}
+
+/**
+ * 列幅を文字数に応じて作成する
+ */
+function createColumnWidths(rowData) {
+  return Object.entries(rowData).map(([heading, value]) => {
+    const headingLength = String(heading).length;
+
+    const valueLength = String(value ?? "").length;
+
+    return {
+      wch: Math.min(Math.max(headingLength, valueLength, 10) + 2, 45),
+    };
+  });
+}
+
 function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   const navigate = useNavigate();
 
@@ -92,6 +119,8 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   const [isLoadingItems, setIsLoadingItems] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
+
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const [message, setMessage] = useState("");
 
@@ -153,7 +182,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         inputRefs.current = [];
 
         setPhotoItems(nextPhotoItems);
-
         setPhotoNumbers(nextPhotoNumbers);
       } catch (error) {
         console.error("写真項目読み込みエラー:", error);
@@ -212,6 +240,36 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   };
 
   /**
+   * Firestoreへ保存するデータを作成する
+   */
+  const createSaveData = () => {
+    const photoNumbersForSave = createPhotoNumbersForSave(
+      photoNumbers,
+      photoItems,
+    );
+
+    return {
+      propertyId: propertyData?.id ?? "",
+
+      managementNumber: propertyData?.managementNumber ?? "",
+
+      propertyName: propertyData?.propertyName ?? "",
+
+      inspectionDate: propertyData?.inspectionDate ?? "",
+
+      inspectionType: propertyData?.inspectionType ?? "",
+
+      address: propertyData?.address ?? "",
+
+      photoItems,
+
+      photoNumbers: photoNumbersForSave,
+
+      updatedAt: serverTimestamp(),
+    };
+  };
+
+  /**
    * 写真番号をpropertyPhotosへ保存
    */
   const handleSave = async () => {
@@ -228,32 +286,11 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       setIsSaving(true);
       setMessage("");
 
-      const photoNumbersForSave = createPhotoNumbersForSave(
-        photoNumbers,
-        photoItems,
-      );
-
       const propertyPhotoReference = doc(db, "propertyPhotos", propertyData.id);
 
       const existingSnapshot = await getDoc(propertyPhotoReference);
 
-      const saveData = {
-        propertyId: propertyData.id,
-
-        managementNumber: propertyData.managementNumber ?? "",
-
-        propertyName: propertyData.propertyName ?? "",
-
-        inspectionDate: propertyData.inspectionDate ?? "",
-
-        inspectionType: propertyData.inspectionType ?? "",
-
-        photoItems,
-
-        photoNumbers: photoNumbersForSave,
-
-        updatedAt: serverTimestamp(),
-      };
+      const saveData = createSaveData();
 
       /*
        * 新規作成時だけcreatedAtを追加
@@ -284,6 +321,138 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       setMessage(`保存できませんでした：${errorText}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  /**
+   * Excelダウンロード用の
+   * 1行分のデータを作成する
+   */
+  const createExcelRow = (targetPhotoNumbers) => {
+    const rowData = {
+      管理番号: propertyData?.managementNumber ?? "",
+
+      検査日: propertyData?.inspectionDate ?? "",
+
+      物件名: propertyData?.propertyName ?? "",
+
+      検査種別: propertyData?.inspectionType ?? "",
+
+      住所: propertyData?.address ?? "",
+    };
+
+    /*
+     * 写真項目を横方向の列として追加する
+     */
+    photoItems.forEach((item) => {
+      rowData[item] = targetPhotoNumbers?.[item] ?? "";
+    });
+
+    return rowData;
+  };
+
+  /**
+   * 写真番号をExcelでダウンロードする
+   *
+   * 1物件を1行にし、
+   * 写真項目を横方向へ並べる
+   */
+  const handleExcelDownload = async () => {
+    if (isDownloading) {
+      return;
+    }
+
+    if (!propertyData?.id) {
+      setMessage("物件IDがありません。");
+      return;
+    }
+
+    if (photoItems.length === 0) {
+      setMessage("ダウンロードする写真項目がありません。");
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+      setMessage("");
+
+      /*
+       * Firestoreに保存されている
+       * 最新データを取得する
+       */
+      const propertyPhotoReference = doc(db, "propertyPhotos", propertyData.id);
+
+      const propertyPhotoSnapshot = await getDoc(propertyPhotoReference);
+
+      if (!propertyPhotoSnapshot.exists()) {
+        throw new Error(
+          "写真番号がまだ保存されていません。先に保存してください。",
+        );
+      }
+
+      const savedData = propertyPhotoSnapshot.data();
+
+      const savedPhotoNumbers = savedData.photoNumbers ?? {};
+
+      const rowData = createExcelRow(savedPhotoNumbers);
+
+      /*
+       * 1物件1行のワークシートを作成
+       */
+      const worksheet = XLSX.utils.json_to_sheet([rowData]);
+
+      /*
+       * 列幅を調整
+       */
+      worksheet["!cols"] = createColumnWidths(rowData);
+
+      /*
+       * 先頭行を固定
+       */
+      worksheet["!freeze"] = {
+        xSplit: 0,
+        ySplit: 1,
+      };
+
+      /*
+       * オートフィルターを設定
+       */
+      const worksheetRange = XLSX.utils.decode_range(worksheet["!ref"]);
+
+      worksheet["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: {
+            r: 0,
+            c: 0,
+          },
+          e: {
+            r: worksheetRange.e.r,
+            c: worksheetRange.e.c,
+          },
+        }),
+      };
+
+      const workbook = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "写真番号");
+
+      const managementNumber = sanitizeFileName(propertyData?.managementNumber);
+
+      const propertyName = sanitizeFileName(propertyData?.propertyName);
+
+      const fileName = `${managementNumber}_${propertyName}_写真番号.xlsx`;
+
+      XLSX.writeFile(workbook, fileName);
+
+      setMessage("Excelをダウンロードしました。");
+    } catch (error) {
+      console.error("Excelダウンロードエラー:", error);
+
+      const errorText = error instanceof Error ? error.message : String(error);
+
+      setMessage(`Excelを作成できませんでした：${errorText}`);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -361,14 +530,26 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       {message && <p className="save-message">{message}</p>}
 
       <div className="form-buttons">
-        <button type="button" onClick={handleBack} disabled={isSaving}>
+        <button
+          type="button"
+          onClick={handleBack}
+          disabled={isSaving || isDownloading}
+        >
           戻る
         </button>
 
         <button
           type="button"
+          onClick={handleExcelDownload}
+          disabled={isSaving || isDownloading || photoItems.length === 0}
+        >
+          {isDownloading ? "作成中..." : "Excelダウンロード"}
+        </button>
+
+        <button
+          type="button"
           onClick={handleSave}
-          disabled={isSaving || photoItems.length === 0}
+          disabled={isSaving || isDownloading || photoItems.length === 0}
         >
           {isSaving ? "保存中..." : "保存"}
         </button>
