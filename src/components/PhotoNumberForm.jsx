@@ -107,6 +107,16 @@ function createColumnWidths(rowData) {
   });
 }
 
+const JUDGMENT_MARKS = ["＊", "*", "※", "米", "〇", "○", "△", "×"];
+
+function isJudgmentItem(item) {
+  const firstCharacter = String(item ?? "")
+    .trim()
+    .charAt(0);
+
+  return JUDGMENT_MARKS.includes(firstCharacter);
+}
+
 function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   const navigate = useNavigate();
 
@@ -509,17 +519,39 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
                 <td>{item}</td>
 
                 <td>
-                  <input
-                    ref={(element) => {
-                      inputRefs.current[index] = element;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    autoFocus={index === 0}
-                    value={photoNumbers[item] ?? ""}
-                    onChange={(event) => handleChange(item, event.target.value)}
-                    onKeyDown={(event) => handleKeyDown(event, index)}
-                  />
+                  {isJudgmentItem(item) ? (
+                    <select
+                      ref={(element) => {
+                        inputRefs.current[index] = element;
+                      }}
+                      autoFocus={index === 0}
+                      value={photoNumbers[item] ?? ""}
+                      onChange={(event) =>
+                        handleChange(item, event.target.value)
+                      }
+                      onKeyDown={(event) => handleKeyDown(event, index)}
+                    >
+                      <option value="">－</option>
+
+                      <option value="〇">〇</option>
+
+                      <option value="✖">✖</option>
+                    </select>
+                  ) : (
+                    <input
+                      ref={(element) => {
+                        inputRefs.current[index] = element;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus={index === 0}
+                      value={photoNumbers[item] ?? ""}
+                      onChange={(event) =>
+                        handleChange(item, event.target.value)
+                      }
+                      onKeyDown={(event) => handleKeyDown(event, index)}
+                    />
+                  )}
                 </td>
               </tr>
             ))}
