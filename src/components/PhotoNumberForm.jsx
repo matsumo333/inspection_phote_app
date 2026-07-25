@@ -448,9 +448,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
       const managementNumber = sanitizeFileName(propertyData?.managementNumber);
 
-      const propertyName = sanitizeFileName(propertyData?.propertyName);
+      // const propertyName = sanitizeFileName(propertyData?.propertyName);
 
-      const fileName = `${managementNumber}_${propertyName}_写真番号.xlsx`;
+      const fileName = `${managementNumber}.xlsx`;
 
       XLSX.writeFile(workbook, fileName);
 
