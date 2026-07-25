@@ -20,6 +20,10 @@ function App() {
 
           <Route path="/property/edit/:id" element={<PropertyFormPage />} />
 
+          <Route path="/photo/new" element={<PhotoNumberPage />} />
+
+          <Route path="/photo/:id" element={<PhotoNumberPage />} />
+
           <Route path="/property/photo-number" element={<PhotoNumberPage />} />
 
           <Route

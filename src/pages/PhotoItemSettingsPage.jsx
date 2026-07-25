@@ -7,7 +7,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
-
+import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 
 /**
@@ -40,6 +40,7 @@ function removeDuplicateItems(items) {
 }
 
 function PhotoItemSettingsPage() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState([]);
 
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
@@ -331,6 +332,10 @@ function PhotoItemSettingsPage() {
     }
   };
 
+  const handleBack = () => {
+    navigate("/");
+  };
+
   /**
    * 検査種別を削除
    */
@@ -472,6 +477,14 @@ function PhotoItemSettingsPage() {
                 className="delete-button"
               >
                 {isDeleting ? "削除中..." : "検査種別を削除"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={isSaving || isDeleting}
+              >
+                戻る
               </button>
             </div>
           </>
