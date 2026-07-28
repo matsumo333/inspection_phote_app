@@ -5,6 +5,7 @@ import {
   getDoc,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -42,7 +43,6 @@ function PropertyFormPage() {
         setErrorMessage("");
 
         const propertyReference = doc(db, "properties", id);
-
         const propertySnapshot = await getDoc(propertyReference);
 
         if (!propertySnapshot.exists()) {
@@ -82,6 +82,9 @@ function PropertyFormPage() {
     };
   }, [id, passedPropertyData]);
 
+  /**
+   * 通常の1件保存
+   */
   const handleSave = async (formData) => {
     try {
       setErrorMessage("");
@@ -111,6 +114,57 @@ function PropertyFormPage() {
       const errorText = error instanceof Error ? error.message : String(error);
 
       setErrorMessage(`物件を保存できませんでした：${errorText}`);
+
+      throw error;
+    }
+  };
+
+  /**
+   * PDFから読み取った複数物件を一括保存
+   */
+  const handleBulkSave = async (properties) => {
+    try {
+      setErrorMessage("");
+
+      if (!Array.isArray(properties) || properties.length === 0) {
+        throw new Error("登録する物件データがありません。");
+      }
+
+      const batch = writeBatch(db);
+      const propertiesCollection = collection(db, "properties");
+
+      properties.forEach((property) => {
+        const propertyReference = doc(propertiesCollection);
+
+        batch.set(propertyReference, {
+          managementNumber: String(property.managementNumber ?? "").trim(),
+
+          inspectionDate: String(property.inspectionDate ?? "").trim(),
+
+          propertyName: String(property.propertyName ?? "").trim(),
+
+          inspectionType: String(property.inspectionType ?? "").trim(),
+
+          address: String(property.address ?? "").trim(),
+
+          supervisor: String(property.supervisor ?? "").trim(),
+
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      await batch.commit();
+
+      return properties.length;
+    } catch (error) {
+      console.error("PDF一括保存エラー:", error);
+
+      const errorText = error instanceof Error ? error.message : String(error);
+
+      setErrorMessage(`PDFの物件を保存できませんでした：${errorText}`);
+
+      throw error;
     }
   };
 
@@ -143,6 +197,7 @@ function PropertyFormPage() {
         initialData={initialData}
         isEditMode={isEditMode}
         onSave={handleSave}
+        onBulkSave={handleBulkSave}
         onClose={handleClose}
       />
     </>
