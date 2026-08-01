@@ -13,20 +13,49 @@ import { db } from "../firebase";
 import "../styles/PropertyList.scss";
 
 /**
- * 今日から2日前の日付を
- * YYYY-MM-DD形式で取得する
+ * YYYY-MM-DD形式の日付を
+ * ローカル時間のDateオブジェクトに変換する
  */
-const getTwoDaysAgo = () => {
-  const date = new Date();
+const parseLocalDate = (dateString) => {
+  if (!dateString) {
+    return null;
+  }
 
-  // 端末のローカル時間を基準に2日前にする
-  date.setDate(date.getDate() - 2);
+  const [year, month, day] = dateString.split("-").map(Number);
 
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  if (!year || !month || !day) {
+    return null;
+  }
 
-  return `${year}-${month}-${day}`;
+  return new Date(year, month - 1, day);
+};
+
+/**
+ * 今日の日付を取得する
+ * 時刻部分は00:00:00にする
+ */
+const getToday = () => {
+  const today = new Date();
+
+  today.setHours(0, 0, 0, 0);
+
+  return today;
+};
+
+/**
+ * 検査日から2日後の削除日を取得する
+ */
+const getDeleteDate = (inspectionDate) => {
+  const date = parseLocalDate(inspectionDate);
+
+  if (!date) {
+    return null;
+  }
+
+  date.setDate(date.getDate() + 2);
+  date.setHours(0, 0, 0, 0);
+
+  return date;
 };
 
 function PropertyList() {
@@ -45,7 +74,7 @@ function PropertyList() {
     const unsubscribe = onSnapshot(
       propertiesQuery,
       async (snapshot) => {
-        const twoDaysAgo = getTwoDaysAgo();
+        const today = getToday();
 
         const propertyList = snapshot.docs.map((document) => ({
           id: document.id,
@@ -53,14 +82,20 @@ function PropertyList() {
         }));
 
         /*
-         * 検査日が2日前以前の物件を抽出する
+         * 今日が「検査日＋2日」以降の物件を削除対象にする
+         *
+         * 例：
+         * 検査日 8月1日
+         * 削除日 8月3日
          */
         const expiredProperties = propertyList.filter((property) => {
-          if (!property.inspectionDate) {
+          const deleteDate = getDeleteDate(property.inspectionDate);
+
+          if (!deleteDate) {
             return false;
           }
 
-          return property.inspectionDate <= twoDaysAgo;
+          return today >= deleteDate;
         });
 
         /*
@@ -71,7 +106,6 @@ function PropertyList() {
             await Promise.all(
               expiredProperties.flatMap((property) => [
                 deleteDoc(doc(db, "properties", property.id)),
-
                 deleteDoc(doc(db, "propertyPhotos", property.id)),
               ]),
             );
@@ -79,21 +113,26 @@ function PropertyList() {
             console.error("期限切れ物件の自動削除エラー:", error);
 
             setErrorMessage("古い物件を自動削除できませんでした。");
-
             setIsLoading(false);
+
             return;
           }
         }
 
         /*
-         * 画面には削除対象以外を表示する
+         * 削除日になっていない物件だけを画面に表示する
          */
         const activeProperties = propertyList.filter((property) => {
-          if (!property.inspectionDate) {
+          const deleteDate = getDeleteDate(property.inspectionDate);
+
+          /*
+           * 検査日が未入力または不正な場合は削除せず表示する
+           */
+          if (!deleteDate) {
             return true;
           }
 
-          return property.inspectionDate > twoDaysAgo;
+          return today < deleteDate;
         });
 
         setProperties(activeProperties);
@@ -104,7 +143,6 @@ function PropertyList() {
         console.error("物件一覧の読み込みエラー:", error);
 
         setErrorMessage("物件一覧を読み込めませんでした。");
-
         setIsLoading(false);
       },
     );
@@ -140,7 +178,6 @@ function PropertyList() {
     try {
       await Promise.all([
         deleteDoc(doc(db, "properties", propertyId)),
-
         deleteDoc(doc(db, "propertyPhotos", propertyId)),
       ]);
     } catch (error) {
@@ -195,11 +232,8 @@ function PropertyList() {
                   onClick={() => openPhotoNumberPage(property.id)}
                 >
                   <td>{property.managementNumber}</td>
-
                   <td>{property.propertyName}</td>
-
                   <td>{property.inspectionDate}</td>
-
                   <td>{property.inspectionType}</td>
 
                   <td>

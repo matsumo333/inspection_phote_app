@@ -21,6 +21,32 @@ function getTomorrowDate() {
 }
 
 /**
+ * 比較用に文字列を整える
+ *
+ * ・nullやundefinedを空文字にする
+ * ・前後の空白を削除する
+ * ・半角空白、全角空白、改行を削除する
+ * ・英字の大文字と小文字を同じものとして扱う
+ */
+const normalizeValue = (value) => {
+  return String(value ?? "")
+    .trim()
+    .replace(/[\s\u3000]+/g, "")
+    .toLowerCase();
+};
+
+/**
+ * 管理番号と検査種別から
+ * 重複確認用のキーを作成する
+ */
+const createDuplicateKey = (managementNumber, inspectionType) => {
+  const normalizedManagementNumber = normalizeValue(managementNumber);
+  const normalizedInspectionType = normalizeValue(inspectionType);
+
+  return `${normalizedManagementNumber}__${normalizedInspectionType}`;
+};
+
+/**
  * 空の物件情報
  */
 const createEmptyFormData = () => ({
@@ -126,6 +152,27 @@ function PropertyForm({
   };
 
   /**
+   * PDFから読み取った物件を整える
+   */
+  const normalizePdfProperty = (property) => {
+    return {
+      ...property,
+
+      managementNumber: String(property.managementNumber ?? "").trim(),
+
+      inspectionDate: String(property.inspectionDate ?? "").trim(),
+
+      propertyName: String(property.propertyName ?? "").trim(),
+
+      inspectionType: String(property.inspectionType ?? "").trim(),
+
+      address: String(property.address ?? "").trim(),
+
+      supervisor: String(property.supervisor ?? "").trim(),
+    };
+  };
+
+  /**
    * PDFから複数物件を読み取り、一括保存する
    */
   const handlePdfImport = async (event) => {
@@ -146,34 +193,187 @@ function PropertyForm({
 
       console.log("PDF読み取り開始:", file.name);
 
-      const properties = await parseInspectionPdf(file, inspectionTypes);
+      const parsedProperties = await parseInspectionPdf(file, inspectionTypes);
 
-      console.log("PDFから読み取った物件:", properties);
+      console.log("PDFから読み取った物件:", parsedProperties);
 
-      if (!Array.isArray(properties)) {
+      if (!Array.isArray(parsedProperties)) {
         throw new Error("PDF解析結果の形式が正しくありません。");
       }
 
-      if (properties.length === 0) {
+      if (parsedProperties.length === 0) {
         throw new Error("PDFから物件情報を取得できませんでした。");
       }
 
-      const details = properties
+      /*
+       * PDFから読み取った文字列の前後の空白を除去する
+       */
+      const properties = parsedProperties.map(normalizePdfProperty);
+
+      /*
+       * 管理番号または検査種別が空の物件を確認する
+       */
+      const invalidProperties = properties.filter(
+        (property) => !property.managementNumber || !property.inspectionType,
+      );
+
+      if (invalidProperties.length > 0) {
+        const invalidDetails = invalidProperties
+          .map((property, index) => {
+            return (
+              `${index + 1}. ` +
+              `管理番号：${property.managementNumber || "未取得"}\n` +
+              `検査種別：${property.inspectionType || "未取得"}\n` +
+              `物件名：${property.propertyName || "未取得"}`
+            );
+          })
+          .join("\n\n");
+
+        throw new Error(
+          "管理番号または検査種別を取得できない物件があります。\n\n" +
+            invalidDetails,
+        );
+      }
+
+      /*
+       * Firestoreに現在登録されている
+       * すべての物件を取得する
+       */
+      const existingSnapshot = await getDocs(collection(db, "properties"));
+
+      /*
+       * 登録済みの「管理番号＋検査種別」を
+       * Setに格納する
+       */
+      const existingKeys = new Set(
+        existingSnapshot.docs.map((documentSnapshot) => {
+          const data = documentSnapshot.data();
+
+          return createDuplicateKey(data.managementNumber, data.inspectionType);
+        }),
+      );
+
+      /*
+       * PDF内の重複確認に使用する
+       */
+      const pdfKeys = new Set();
+
+      /*
+       * 新規登録できる物件
+       */
+      const newProperties = [];
+
+      /*
+       * 重複しているため登録しない物件
+       */
+      const duplicateProperties = [];
+
+      properties.forEach((property) => {
+        const duplicateKey = createDuplicateKey(
+          property.managementNumber,
+          property.inspectionType,
+        );
+
+        /*
+         * Firestoreに同じ
+         * 「管理番号＋検査種別」が存在するか
+         */
+        const alreadyExists = existingKeys.has(duplicateKey);
+
+        /*
+         * 同じPDF内に同じ
+         * 「管理番号＋検査種別」が存在するか
+         */
+        const duplicatedInPdf = pdfKeys.has(duplicateKey);
+
+        if (alreadyExists) {
+          duplicateProperties.push({
+            ...property,
+            duplicateReason: "すでに登録されています",
+          });
+
+          return;
+        }
+
+        if (duplicatedInPdf) {
+          duplicateProperties.push({
+            ...property,
+            duplicateReason: "PDF内で重複しています",
+          });
+
+          return;
+        }
+
+        pdfKeys.add(duplicateKey);
+        newProperties.push(property);
+      });
+
+      /*
+       * すべての物件が重複している場合
+       */
+      if (newProperties.length === 0) {
+        const duplicateDetails = duplicateProperties
+          .map((property, index) => {
+            return (
+              `${index + 1}. ` +
+              `${property.managementNumber}\n` +
+              `${property.propertyName}\n` +
+              `${property.inspectionType}\n` +
+              `理由：${property.duplicateReason}`
+            );
+          })
+          .join("\n\n");
+
+        window.alert(
+          "新規登録できる物件がありません。\n\n" +
+            "次の物件は登録済み、またはPDF内で重複しています。\n\n" +
+            duplicateDetails,
+        );
+
+        return;
+      }
+
+      /*
+       * 新規登録する物件の内容
+       */
+      const newPropertyDetails = newProperties
         .map((property, index) => {
           return (
-            `${index + 1}. ${property.inspectionDate ?? ""}\n` +
-            `${property.managementNumber ?? ""}\n` +
-            `${property.propertyName ?? ""}\n` +
-            `${property.inspectionType ?? ""}`
+            `${index + 1}. ${property.inspectionDate}\n` +
+            `${property.managementNumber}\n` +
+            `${property.propertyName}\n` +
+            `${property.inspectionType}`
           );
         })
         .join("\n\n");
 
-      const shouldSave = window.confirm(
-        `${properties.length}件を読み取りました。\n\n` +
-          `${details}\n\n` +
-          "すべて登録しますか？",
-      );
+      /*
+       * 重複している物件の内容
+       */
+      const duplicateDetails = duplicateProperties
+        .map((property, index) => {
+          return (
+            `${index + 1}. ` +
+            `${property.managementNumber} / ` +
+            `${property.inspectionType}\n` +
+            `理由：${property.duplicateReason}`
+          );
+        })
+        .join("\n\n");
+
+      let confirmMessage =
+        `${newProperties.length}件を新規登録します。\n\n` + newPropertyDetails;
+
+      if (duplicateProperties.length > 0) {
+        confirmMessage +=
+          `\n\n──────────────\n` +
+          `登録しない重複物件：${duplicateProperties.length}件\n\n` +
+          duplicateDetails;
+      }
+
+      confirmMessage += "\n\n重複していない物件だけを登録しますか？";
+
+      const shouldSave = window.confirm(confirmMessage);
 
       if (!shouldSave) {
         return;
@@ -183,9 +383,20 @@ function PropertyForm({
         throw new Error("PDF一括保存処理が設定されていません。");
       }
 
-      const savedCount = await onBulkSave(properties);
+      /*
+       * 重複していない物件だけを保存する
+       */
+      const savedCount = await onBulkSave(newProperties);
 
-      window.alert(`${savedCount}件を登録しました。`);
+      let completeMessage = `${savedCount}件を登録しました。`;
+
+      if (duplicateProperties.length > 0) {
+        completeMessage +=
+          `\n\n${duplicateProperties.length}件は、` +
+          "同じ管理番号と検査種別が存在するため登録しませんでした。";
+      }
+
+      window.alert(completeMessage);
 
       navigate("/");
     } catch (error) {

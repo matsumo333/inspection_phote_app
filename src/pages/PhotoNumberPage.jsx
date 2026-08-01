@@ -1,10 +1,6 @@
 import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import {
-    useLocation,
-    useNavigate,
-    useParams,
-} from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import PhotoNumberForm from "../components/PhotoNumberForm";
 import { db } from "../firebase";
@@ -14,14 +10,12 @@ function PhotoNumberPage() {
   const location = useLocation();
   const { id } = useParams();
 
-  const passedPropertyData =
-    location.state?.propertyData || null;
+  const passedPropertyData = location.state?.propertyData || null;
 
-  const [propertyData, setPropertyData] =
-    useState(passedPropertyData);
+  const [propertyData, setPropertyData] = useState(passedPropertyData);
 
   const [isLoading, setIsLoading] = useState(
-    Boolean(id && !passedPropertyData)
+    Boolean(id && !passedPropertyData),
   );
 
   const [error, setError] = useState("");
@@ -36,20 +30,12 @@ function PhotoNumberPage() {
         setIsLoading(true);
         setError("");
 
-        const propertyReference = doc(
-          db,
-          "properties",
-          id
-        );
+        const propertyReference = doc(db, "properties", id);
 
-        const propertySnapshot = await getDoc(
-          propertyReference
-        );
+        const propertySnapshot = await getDoc(propertyReference);
 
         if (!propertySnapshot.exists()) {
-          setError(
-            "物件データが見つかりません。"
-          );
+          setError("物件データが見つかりません。");
           return;
         }
 
@@ -58,16 +44,10 @@ function PhotoNumberPage() {
           ...propertySnapshot.data(),
         });
       } catch (loadError) {
-        console.error(
-          "物件読み込みエラー:",
-          loadError
-        );
+        console.error("物件読み込みエラー:", loadError);
 
         setError(
-          `物件を読み込めませんでした：${
-            loadError.code ||
-            loadError.message
-          }`
+          `物件を読み込めませんでした：${loadError.code || loadError.message}`,
         );
       } finally {
         setIsLoading(false);
@@ -79,16 +59,19 @@ function PhotoNumberPage() {
 
   const handleBack = () => {
     if (propertyData?.id) {
-      navigate(
-        `/property/edit/${propertyData.id}`,
-        {
-          state: {
-            propertyData,
-          },
-        }
-      );
+      navigate(`/property/edit/${propertyData.id}`, {
+        state: {
+          propertyData,
+        },
+      });
 
-      return;
+      return (
+        <PhotoNumberForm
+          key={propertyData.id || "new"}
+          propertyData={propertyData}
+          onSaved={handleSaved}
+        />
+      );
     }
 
     navigate("/property/new", {
@@ -111,10 +94,7 @@ function PhotoNumberPage() {
       <section>
         <p>{error}</p>
 
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-        >
+        <button type="button" onClick={() => navigate("/")}>
           一覧へ戻る
         </button>
       </section>
@@ -124,15 +104,9 @@ function PhotoNumberPage() {
   if (!propertyData) {
     return (
       <section>
-        <p>
-          物件情報がありません。
-          物件入力画面から開いてください。
-        </p>
+        <p>物件情報がありません。 物件入力画面から開いてください。</p>
 
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-        >
+        <button type="button" onClick={() => navigate("/")}>
           一覧へ戻る
         </button>
       </section>

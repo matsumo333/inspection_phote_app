@@ -470,11 +470,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
    * 戻る
    */
   const handleBack = () => {
-    if (typeof onBack === "function") {
-      onBack();
-      return;
-    }
-
     navigate("/");
   };
 
