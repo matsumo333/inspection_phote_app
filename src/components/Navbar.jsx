@@ -43,7 +43,7 @@ const Navbar = () => {
           }
         >
           <NavLink to="/" end className={getLinkClassName} onClick={closeMenu}>
-            物件一覧
+            調査対象一覧
           </NavLink>
 
           <NavLink
@@ -51,7 +51,7 @@ const Navbar = () => {
             className={getLinkClassName}
             onClick={closeMenu}
           >
-            新規登録
+            調査対象追加
           </NavLink>
         </div>
       </div>

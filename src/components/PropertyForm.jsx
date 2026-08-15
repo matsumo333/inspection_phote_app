@@ -47,11 +47,31 @@ const createDuplicateKey = (managementNumber, inspectionType) => {
 };
 
 /**
+ * 調査予定時刻の選択肢を作成する
+ * 08:00〜18:00を5分刻み
+ */
+const createInspectionTimeOptions = () => {
+  const options = [];
+
+  for (let totalMinutes = 8 * 60; totalMinutes <= 18 * 60; totalMinutes += 5) {
+    const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+    const minute = String(totalMinutes % 60).padStart(2, "0");
+
+    options.push(`${hour}:${minute}`);
+  }
+
+  return options;
+};
+
+const inspectionTimeOptions = createInspectionTimeOptions();
+
+/**
  * 空の物件情報
  */
 const createEmptyFormData = () => ({
   managementNumber: "",
   inspectionDate: getTomorrowDate(),
+  inspectionTime: "",
   propertyName: "",
   inspectionType: "",
   address: "",
@@ -161,6 +181,8 @@ function PropertyForm({
       managementNumber: String(property.managementNumber ?? "").trim(),
 
       inspectionDate: String(property.inspectionDate ?? "").trim(),
+
+      inspectionTime: String(property.inspectionTime ?? "").trim(),
 
       propertyName: String(property.propertyName ?? "").trim(),
 
@@ -453,6 +475,8 @@ function PropertyForm({
 
         managementNumber: formData.managementNumber.trim(),
 
+        inspectionTime: String(formData.inspectionTime ?? "").trim(),
+
         propertyName: formData.propertyName.trim(),
 
         inspectionType: formData.inspectionType.trim(),
@@ -509,7 +533,7 @@ function PropertyForm({
       )}
 
       <div className="form-group">
-        <label htmlFor="managementNumber">管理番号</label>
+        <label htmlFor="managementNumber">調査対象番号</label>
 
         <input
           id="managementNumber"
@@ -523,7 +547,7 @@ function PropertyForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="inspectionDate">検査日</label>
+        <label htmlFor="inspectionDate">調査日</label>
 
         <input
           id="inspectionDate"
@@ -536,7 +560,27 @@ function PropertyForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="propertyName">物件名</label>
+        <label htmlFor="inspectionTime">調査予定時刻</label>
+
+        <select
+          id="inspectionTime"
+          name="inspectionTime"
+          value={formData.inspectionTime}
+          onChange={handleChange}
+          disabled={isSaving || isReadingPdf}
+        >
+          <option value="">選択してください</option>
+
+          {inspectionTimeOptions.map((time) => (
+            <option key={time} value={time}>
+              {time}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="propertyName">調査対象名</label>
 
         <input
           id="propertyName"
@@ -549,7 +593,7 @@ function PropertyForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="inspectionType">検査種別</label>
+        <label htmlFor="inspectionType">構造種別</label>
 
         <select
           id="inspectionType"
@@ -586,19 +630,6 @@ function PropertyForm({
           name="address"
           type="text"
           value={formData.address}
-          onChange={handleChange}
-          disabled={isSaving || isReadingPdf}
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="supervisor">監督者</label>
-
-        <input
-          id="supervisor"
-          name="supervisor"
-          type="text"
-          value={formData.supervisor}
           onChange={handleChange}
           disabled={isSaving || isReadingPdf}
         />

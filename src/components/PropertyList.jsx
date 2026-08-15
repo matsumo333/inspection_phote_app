@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { db } from "../firebase";
+
 import "../styles/PropertyList.scss";
 
 /**
@@ -140,9 +141,9 @@ function PropertyList() {
         setErrorMessage("");
       },
       (error) => {
-        console.error("物件一覧の読み込みエラー:", error);
+        console.error("調査対象一覧の読み込みエラー:", error);
 
-        setErrorMessage("物件一覧を読み込めませんでした。");
+        setErrorMessage("調査対象一覧を読み込めませんでした。");
         setIsLoading(false);
       },
     );
@@ -181,9 +182,9 @@ function PropertyList() {
         deleteDoc(doc(db, "propertyPhotos", propertyId)),
       ]);
     } catch (error) {
-      console.error("物件削除エラー:", error);
+      console.error("調査対象削除エラー:", error);
 
-      alert("物件を削除できませんでした。");
+      alert("調査対象を削除できませんでした。");
     }
   };
 
@@ -206,20 +207,22 @@ function PropertyList() {
   return (
     <main className="property-list">
       <div className="property-list__header">
-        <h2>物件一覧</h2>
+        <h2>調査対象一覧</h2>
       </div>
 
       {properties.length === 0 ? (
-        <p>登録されている物件はありません。</p>
+        <p>登録されている調査対象はありません。</p>
       ) : (
         <div className="property-list__table-wrapper">
           <table className="property-list__table">
             <thead>
               <tr>
-                <th>管理番号</th>
-                <th>物件名</th>
-                <th>検査日</th>
-                <th>検査種別</th>
+                {/* <th>管理番号</th> */}
+                <th>調査対象名</th>
+                <th>住所</th>
+                <th>調査日</th>
+                <th>調査予定</th>
+                <th>構造種別</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -231,9 +234,11 @@ function PropertyList() {
                   className="property-list__row"
                   onClick={() => openPhotoNumberPage(property.id)}
                 >
-                  <td>{property.managementNumber}</td>
+                  {/* <td>{property.managementNumber}</td> */}
                   <td>{property.propertyName}</td>
+                  <td>{property.address}</td>
                   <td>{property.inspectionDate}</td>
+                  <td>{property.inspectionTime || "-"}</td>
                   <td>{property.inspectionType}</td>
 
                   <td>

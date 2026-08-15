@@ -5,10 +5,10 @@ function Header() {
 
   return (
     <header className="app-header">
-      <h1>現場写真管理</h1>
+      <h1>地震保険写真管理</h1>
 
       <button type="button" onClick={() => navigate("/property/new")}>
-        新規物件
+        調査対象物件追加
       </button>
     </header>
   );

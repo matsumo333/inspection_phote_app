@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+import AuthGate from "./components/AuthGate";
 import Navbar from "./components/Navbar";
 import { PhotoItemSettingsProvider } from "./contexts/PhotoItemSettingsContext";
 import PhotoItemSettingsPage from "./pages/PhotoItemSettingsPage";
@@ -9,30 +10,42 @@ import PropertyListPage from "./pages/PropertyListPage";
 
 function App() {
   return (
-    <BrowserRouter>
-      <PhotoItemSettingsProvider>
-        <Navbar />
+    <AuthGate>
+      <BrowserRouter>
+        <PhotoItemSettingsProvider>
+          <Navbar />
 
-        <Routes>
-          <Route path="/" element={<PropertyListPage />} />
+          <Routes>
+            {/* 調査対象一覧 */}
+            <Route path="/" element={<PropertyListPage />} />
 
-          <Route path="/property/new" element={<PropertyFormPage />} />
+            {/* 新規物件登録 */}
+            <Route path="/property/new" element={<PropertyFormPage />} />
 
-          <Route path="/property/edit/:id" element={<PropertyFormPage />} />
+            {/* 物件編集 */}
+            <Route path="/property/edit/:id" element={<PropertyFormPage />} />
 
-          <Route path="/photo/new" element={<PhotoNumberPage />} />
+            {/* 写真番号新規入力 */}
+            <Route path="/photo/new" element={<PhotoNumberPage />} />
 
-          <Route path="/photo/:id" element={<PhotoNumberPage />} />
+            {/* 物件ごとの写真番号入力・編集 */}
+            <Route path="/photo/:id" element={<PhotoNumberPage />} />
 
-          <Route path="/property/photo-number" element={<PhotoNumberPage />} />
+            {/* 旧ルート互換用 */}
+            <Route
+              path="/property/photo-number"
+              element={<PhotoNumberPage />}
+            />
 
-          <Route
-            path="/settings/photo-items"
-            element={<PhotoItemSettingsPage />}
-          />
-        </Routes>
-      </PhotoItemSettingsProvider>
-    </BrowserRouter>
+            {/* 写真項目設定 */}
+            <Route
+              path="/settings/photo-items"
+              element={<PhotoItemSettingsPage />}
+            />
+          </Routes>
+        </PhotoItemSettingsProvider>
+      </BrowserRouter>
+    </AuthGate>
   );
 }
 
