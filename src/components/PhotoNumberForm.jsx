@@ -9,9 +9,7 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 
@@ -19,7 +17,7 @@ import { db } from "../firebase";
 import { normalizeInspectionType } from "../utils/inspectionTypeUtils";
 
 /* =========================================================
- * 検査種別に対応する写真項目をFirestoreから取得
+ * Firestoreから写真項目を取得
  * ========================================================= */
 
 async function loadPhotoItemsFromFirestore(inspectionType) {
@@ -31,9 +29,7 @@ async function loadPhotoItemsFromFirestore(inspectionType) {
 
   const photoItemQuery = query(
     collection(db, "photoItemSettings"),
-
     where("normalizedInspectionType", "==", normalizedInspectionType),
-
     limit(1),
   );
 
@@ -59,11 +55,7 @@ async function loadPhotoItemsFromFirestore(inspectionType) {
 }
 
 /* =========================================================
- * 判定項目
- *
- * これらの記号で始まる項目は
- * 遠景・近景ではなく
- * 〇・✖の選択欄にする
+ * 〇・✖などの判定項目
  * ========================================================= */
 
 const JUDGMENT_MARKS = ["＊", "*", "※", "米", "〇", "○", "△", "×", "✖"];
@@ -77,26 +69,49 @@ function isJudgmentItem(item) {
 }
 
 /* =========================================================
- * 連番の定義
+ * 連番
  *
- * 基礎①～⑳
- * 外壁A～T
- * 柱a～t
+ * ①～㊿
+ * A～Z
+ * a～z
  * ========================================================= */
 
-const FOUNDATION_SUFFIXES = Array.from("①②③④⑤⑥⑦⑧⑨⑩" + "⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳");
+const CIRCLED_NUMBERS = Array.from(
+  "①②③④⑤⑥⑦⑧⑨⑩" +
+    "⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳" +
+    "㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚" +
+    "㉛㉜㉝㉞㉟" +
+    "㊱㊲㊳㊴㊵" +
+    "㊶㊷㊸㊹㊺" +
+    "㊻㊼㊽㊾㊿",
+);
 
-const WALL_SUFFIXES = Array.from("ABCDEFGHIJKLMNOPQRST");
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-const COLUMN_SUFFIXES = Array.from("abcdefghijklmnopqrst");
-
-/**
- * 項目がどのグループなのかを取得
+/* =========================================================
+ * 項目のグループ判定
  *
- * foundation = 基礎①～⑳
- * wall       = 外壁A～T
- * column     = 柱a～t
- */
+ * 例
+ *
+ * はり①  → はり::circled
+ * はり②  → はり::circled
+ *
+ * 柱①    → 柱::circled
+ *
+ * 基礎①  → 基礎::circled
+ *
+ * 外壁A  → 外壁::letter
+ * 外壁B  → 外壁::letter
+ * 外壁a  → 外壁::letter
+ *
+ * 壁ばりA → 壁ばり::letter
+ * 壁ばりa → 壁ばり::letter
+ *
+ * 開口部① → 開口部::circled
+ *
+ * A～Zとa～zは同じグループとして扱う
+ * ========================================================= */
+
 function getSequenceGroup(item) {
   const text = String(item ?? "").trim();
 
@@ -104,66 +119,42 @@ function getSequenceGroup(item) {
     return null;
   }
 
-  /*
-   * 基礎①～⑳
-   */
-  if (text.startsWith("基礎")) {
-    const suffix = text.slice("基礎".length);
+  const suffix = text.slice(-1);
+  const category = text.slice(0, -1).trim();
 
-    if (FOUNDATION_SUFFIXES.includes(suffix)) {
-      return "foundation";
-    }
+  if (!category) {
+    return null;
   }
 
-  /*
-   * 外壁A～T
-   */
-  if (text.startsWith("外壁")) {
-    const suffix = text.slice("外壁".length);
-
-    if (WALL_SUFFIXES.includes(suffix)) {
-      return "wall";
-    }
+  if (CIRCLED_NUMBERS.includes(suffix)) {
+    return `${category}::circled`;
   }
 
-  /*
-   * 柱a～t
-   */
-  if (text.startsWith("柱")) {
-    const suffix = text.slice("柱".length);
-
-    if (COLUMN_SUFFIXES.includes(suffix)) {
-      return "column";
-    }
+  if (LETTERS.includes(suffix)) {
+    return `${category}::letter`;
   }
 
-  /*
-   * その他の通常項目
-   */
   return null;
 }
 
 /* =========================================================
- * 遠景・近景データの整形
- *
- * 新形式
+ * 写真番号の値を
  *
  * {
  *   distant: "10",
  *   close: "11"
  * }
  *
- * 旧形式
+ * に統一
+ *
+ * 旧データが
  *
  * "10"
  *
- * の場合は遠景として引き継ぐ
+ * の場合は遠景として読み込む
  * ========================================================= */
 
 function normalizePhotoValue(value) {
-  /*
-   * 新形式
-   */
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return {
       distant: String(value.distant ?? value.far ?? ""),
@@ -172,11 +163,6 @@ function normalizePhotoValue(value) {
     };
   }
 
-  /*
-   * 旧形式
-   *
-   * 旧写真番号は遠景に入れる
-   */
   return {
     distant: String(value ?? ""),
     close: "",
@@ -184,7 +170,7 @@ function normalizePhotoValue(value) {
 }
 
 /* =========================================================
- * 初期写真番号データ作成
+ * 初期値
  * ========================================================= */
 
 function createInitialPhotoNumbers(savedPhotoNumbers, photoItems) {
@@ -193,18 +179,12 @@ function createInitialPhotoNumbers(savedPhotoNumbers, photoItems) {
   photoItems.forEach((item) => {
     const savedValue = savedPhotoNumbers?.[item];
 
-    /*
-     * 判定項目
-     */
     if (isJudgmentItem(item)) {
       initialNumbers[item] = typeof savedValue === "string" ? savedValue : "";
 
       return;
     }
 
-    /*
-     * 写真項目
-     */
     initialNumbers[item] = normalizePhotoValue(savedValue);
   });
 
@@ -212,81 +192,60 @@ function createInitialPhotoNumbers(savedPhotoNumbers, photoItems) {
 }
 
 /* =========================================================
- * 入力されているか判定
+ * 入力済み判定
  * ========================================================= */
 
 function hasEnteredValue(item, photoNumbers) {
   const value = photoNumbers?.[item];
 
-  /*
-   * 判定項目
-   */
   if (isJudgmentItem(item)) {
     return Boolean(String(value ?? "").trim());
   }
 
-  /*
-   * 写真項目
-   */
   const normalized = normalizePhotoValue(value);
 
   return Boolean(normalized.distant.trim() || normalized.close.trim());
 }
 
 /* =========================================================
- * 表示する項目を作成
+ * 表示項目を作成
  *
- * 基礎・外壁・柱それぞれについて
+ * グループごとに
  *
- * 初期表示 = 3件
+ * ・初期3行
+ * ・最後に入力された行の2行先まで
  *
- * 入力後 =
- * 最後に入力されている項目
- * ＋
- * その2件先まで表示
- *
+ * 表示
  * ========================================================= */
 
 function createVisiblePhotoItems(photoItems, photoNumbers) {
-  const groupItems = {
-    foundation: [],
-    wall: [],
-    column: [],
-  };
+  const groupItems = {};
 
   /*
-   * 基礎、外壁、柱を
-   * それぞれ分ける
+   * グループ分け
    */
   photoItems.forEach((item) => {
     const group = getSequenceGroup(item);
 
-    if (group) {
-      groupItems[group].push(item);
-    }
-  });
-
-  /*
-   * 各グループの
-   * 表示対象を保存
-   */
-  const visibleSets = {
-    foundation: new Set(),
-    wall: new Set(),
-    column: new Set(),
-  };
-
-  Object.entries(groupItems).forEach(([groupName, items]) => {
-    if (items.length === 0) {
+    if (!group) {
       return;
     }
 
+    if (!groupItems[group]) {
+      groupItems[group] = [];
+    }
+
+    groupItems[group].push(item);
+  });
+
+  /*
+   * 各グループの表示範囲
+   */
+  const visibleSets = {};
+
+  Object.entries(groupItems).forEach(([groupName, items]) => {
     let lastEnteredIndex = -1;
 
-    /*
-     * 最後に入力されている
-     * 項目の位置を探す
-     */
     items.forEach((item, index) => {
       if (hasEnteredValue(item, photoNumbers)) {
         lastEnteredIndex = index;
@@ -294,22 +253,32 @@ function createVisiblePhotoItems(photoItems, photoNumbers) {
     });
 
     /*
-     * 初期は3件
+     * 初期：
      *
-     * 最後に入力された項目から
-     * 2件先まで表示
+     * ①
+     * ②
+     * ③
      *
-     * 例
      *
-     * ①入力
-     * → ①②③
+     * ②まで入力：
      *
-     * ②入力
-     * → ①②③④
+     * ①
+     * ②
+     * ③
+     * ④
      *
-     * ⑤入力
-     * → ①～⑦
+     *
+     * ⑤まで入力：
+     *
+     * ①
+     * ②
+     * ③
+     * ④
+     * ⑤
+     * ⑥
+     * ⑦
      */
+
     const visibleCount = Math.min(
       items.length,
 
@@ -320,43 +289,37 @@ function createVisiblePhotoItems(photoItems, photoNumbers) {
   });
 
   /*
-   * 元々の写真項目の並び順を維持
+   * Firestore設定の並び順を維持
    */
   return photoItems.filter((item) => {
     const group = getSequenceGroup(item);
 
     /*
-     * 基礎・外壁・柱以外は
+     * 連番項目でないものは
      * 常に表示
      */
     if (!group) {
       return true;
     }
 
-    return visibleSets[group].has(item);
+    return visibleSets[group]?.has(item) ?? false;
   });
 }
 
 /* =========================================================
- * Firestore保存用データ作成
+ * Firestore保存用
  * ========================================================= */
 
 function createPhotoNumbersForSave(photoNumbers, photoItems) {
   const result = {};
 
   photoItems.forEach((item) => {
-    /*
-     * 判定項目
-     */
     if (isJudgmentItem(item)) {
       result[item] = photoNumbers[item] ?? "";
 
       return;
     }
 
-    /*
-     * 遠景・近景
-     */
     const value = normalizePhotoValue(photoNumbers[item]);
 
     result[item] = {
@@ -369,7 +332,7 @@ function createPhotoNumbersForSave(photoNumbers, photoItems) {
 }
 
 /* =========================================================
- * ファイル名整形
+ * ファイル名
  * ========================================================= */
 
 function sanitizeFileName(value) {
@@ -420,13 +383,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   const [loadError, setLoadError] = useState("");
 
   /*
-   * 入力欄のref
-   *
-   * 例
-   *
-   * 基礎①__distant
-   * 基礎①__close
-   * 外壁A__distant
+   * 入力欄
    */
   const inputRefs = useRef({});
 
@@ -440,9 +397,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   );
 
   /* =======================================================
-   * 全項目のフォーカス順
+   * 全入力欄の順番
    *
-   * 非表示になっている項目も含む
+   * Enter移動用
    * ======================================================= */
 
   const allFocusOrder = useMemo(() => {
@@ -473,9 +430,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
     async function initializePhotoItems() {
       try {
         setIsLoadingItems(true);
-
         setLoadError("");
-
         setMessage("");
 
         if (!propertyData?.id) {
@@ -483,13 +438,13 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         }
 
         /*
-         * 写真項目マスター取得
+         * 写真項目設定
          */
         const nextPhotoItems =
           await loadPhotoItemsFromFirestore(inspectionType);
 
         /*
-         * 保存済み写真番号取得
+         * 保存済み写真番号
          */
         const propertyPhotoReference = doc(
           db,
@@ -509,9 +464,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
           return;
         }
 
-        /*
-         * 初期データ作成
-         */
         const nextPhotoNumbers = createInitialPhotoNumbers(
           savedPhotoNumbers,
           nextPhotoItems,
@@ -530,7 +482,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
         }
 
         setPhotoItems([]);
-
         setPhotoNumbers({});
 
         const errorText =
@@ -564,7 +515,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
         [item]: {
           ...currentValue,
-
           [type]: value,
         },
       };
@@ -574,13 +524,12 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   };
 
   /* =======================================================
-   * 判定項目変更
+   * 判定項目
    * ======================================================= */
 
   const handleJudgmentChange = (item, value) => {
     setPhotoNumbers((previous) => ({
       ...previous,
-
       [item]: value,
     }));
 
@@ -588,15 +537,13 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   };
 
   /* =======================================================
-   * Enterで次の入力欄へ
+   * Enterで次へ
    *
    * 遠景
    * ↓
    * 近景
    * ↓
    * 次項目の遠景
-   *
-   * 新しい項目が表示された場合も対応
    * ======================================================= */
 
   const handleKeyDown = (event, currentKey) => {
@@ -613,8 +560,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
     }
 
     /*
-     * React再描画後に
-     * 次の表示済み入力欄を探す
+     * 入力によって新しい行が
+     * 表示される可能性があるため
+     * React描画後に移動
      */
     window.setTimeout(() => {
       for (
@@ -638,11 +586,11 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
         break;
       }
-    }, 30);
+    }, 50);
   };
 
   /* =======================================================
-   * Firestore保存データ
+   * 保存データ
    * ======================================================= */
 
   const createSaveData = () => {
@@ -660,6 +608,8 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
       inspectionDate: propertyData?.inspectionDate ?? "",
 
+      inspectionTime: propertyData?.inspectionTime ?? "",
+
       inspectionType: propertyData?.inspectionType ?? "",
 
       address: propertyData?.address ?? "",
@@ -673,7 +623,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   };
 
   /* =======================================================
-   * Firestoreへ保存
+   * 保存
    * ======================================================= */
 
   const handleSave = async () => {
@@ -689,7 +639,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
     try {
       setIsSaving(true);
-
       setMessage("");
 
       const propertyPhotoReference = doc(db, "propertyPhotos", propertyData.id);
@@ -698,9 +647,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
       const saveData = createSaveData();
 
-      /*
-       * 新規だけcreatedAt
-       */
       if (!existingSnapshot.exists()) {
         saveData.createdAt = serverTimestamp();
       }
@@ -714,7 +660,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       window.setTimeout(() => {
         if (typeof onSaved === "function") {
           onSaved();
-
           return;
         }
 
@@ -732,7 +677,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   };
 
   /* =======================================================
-   * Excel用1行データ作成
+   * Excelデータ
+   *
+   * 写真番号が入力されている項目だけ出力
    * ======================================================= */
 
   const createExcelRow = (targetPhotoNumbers) => {
@@ -740,6 +687,8 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       管理番号: propertyData?.managementNumber ?? "",
 
       検査日: propertyData?.inspectionDate ?? "",
+
+      調査予定時間: propertyData?.inspectionTime ?? "",
 
       物件名: propertyData?.propertyName ?? "",
 
@@ -752,10 +701,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       const value = targetPhotoNumbers?.[item];
 
       /*
-       * 〇・✖などの判定項目
-       *
-       * 選択されているものだけ
-       * Excelへ出力
+       * 〇・✖
        */
       if (isJudgmentItem(item)) {
         const judgment = typeof value === "string" ? value.trim() : "";
@@ -779,17 +725,13 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       const close = normalized.close.trim();
 
       /*
-       * 遠景・近景ともに空欄なら
-       * Excelには出さない
+       * 両方空欄なら
+       * Excel対象外
        */
       if (!distant && !close) {
         return;
       }
 
-      /*
-       * 入力されている項目だけ
-       * Excelへ追加
-       */
       rowData[`${item}_遠景`] = distant;
 
       rowData[`${item}_近景`] = close;
@@ -797,6 +739,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
     return rowData;
   };
+
   /* =======================================================
    * Excelダウンロード
    * ======================================================= */
@@ -820,11 +763,10 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
 
     try {
       setIsDownloading(true);
-
       setMessage("");
 
       /*
-       * Firestoreの最新データ取得
+       * Firestore保存済みデータ取得
        */
       const propertyPhotoReference = doc(db, "propertyPhotos", propertyData.id);
 
@@ -843,10 +785,13 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       const rowData = createExcelRow(savedPhotoNumbers);
 
       /*
-       * Excel作成
+       * ワークシート
        */
       const worksheet = XLSX.utils.json_to_sheet([rowData]);
 
+      /*
+       * 列幅
+       */
       worksheet["!cols"] = createColumnWidths(rowData);
 
       /*
@@ -860,23 +805,28 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       /*
        * オートフィルター
        */
-      const worksheetRange = XLSX.utils.decode_range(worksheet["!ref"]);
+      if (worksheet["!ref"]) {
+        const worksheetRange = XLSX.utils.decode_range(worksheet["!ref"]);
 
-      worksheet["!autofilter"] = {
-        ref: XLSX.utils.encode_range({
-          s: {
-            r: 0,
-            c: 0,
-          },
+        worksheet["!autofilter"] = {
+          ref: XLSX.utils.encode_range({
+            s: {
+              r: 0,
+              c: 0,
+            },
 
-          e: {
-            r: worksheetRange.e.r,
+            e: {
+              r: worksheetRange.e.r,
 
-            c: worksheetRange.e.c,
-          },
-        }),
-      };
+              c: worksheetRange.e.c,
+            },
+          }),
+        };
+      }
 
+      /*
+       * Workbook
+       */
       const workbook = XLSX.utils.book_new();
 
       XLSX.utils.book_append_sheet(workbook, worksheet, "写真番号");
@@ -906,7 +856,6 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
   const handleBack = () => {
     if (typeof onBack === "function") {
       onBack();
-
       return;
     }
 
@@ -936,13 +885,11 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
       <div className="property-summary">
         <p>
           <strong>物件名：</strong>
-
           {propertyData?.propertyName ?? ""}
         </p>
 
         <p>
           <strong>検査種別：</strong>
-
           {propertyData?.inspectionType ?? ""}
         </p>
       </div>
@@ -954,9 +901,7 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
           <thead>
             <tr>
               <th>項目</th>
-
               <th>遠景</th>
-
               <th>近景</th>
             </tr>
           </thead>
@@ -964,9 +909,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
           <tbody>
             {visiblePhotoItems.map((item, index) => {
               /*
-               * -----------------------------------------
-               * 〇・✖等の判定項目
-               * -----------------------------------------
+               * ---------------------------------------
+               * 〇・✖の判定項目
+               * ---------------------------------------
                */
               if (isJudgmentItem(item)) {
                 const inputKey = `${item}__judgment`;
@@ -999,9 +944,9 @@ function PhotoNumberForm({ propertyData, onBack, onSaved }) {
               }
 
               /*
-               * -----------------------------------------
-               * 通常写真項目
-               * -----------------------------------------
+               * ---------------------------------------
+               * 写真番号
+               * ---------------------------------------
                */
 
               const value = normalizePhotoValue(photoNumbers[item]);

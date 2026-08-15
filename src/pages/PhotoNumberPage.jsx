@@ -1,5 +1,7 @@
 import { doc, getDoc } from "firebase/firestore";
+
 import { useEffect, useState } from "react";
+
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import PhotoNumberForm from "../components/PhotoNumberForm";
@@ -7,10 +9,20 @@ import { db } from "../firebase";
 
 function PhotoNumberPage() {
   const navigate = useNavigate();
+
   const location = useLocation();
+
   const { id } = useParams();
 
-  const passedPropertyData = location.state?.propertyData || null;
+  /* =======================================================
+   * 物件入力画面などから渡された物件データ
+   * ======================================================= */
+
+  const passedPropertyData = location.state?.propertyData ?? null;
+
+  /* =======================================================
+   * state
+   * ======================================================= */
 
   const [propertyData, setPropertyData] = useState(passedPropertyData);
 
@@ -20,10 +32,21 @@ function PhotoNumberPage() {
 
   const [error, setError] = useState("");
 
+  /* =======================================================
+   * URLに物件IDがある場合
+   * Firestoreから物件を取得
+   * ======================================================= */
+
   useEffect(() => {
+    /*
+     * stateで物件が渡されている場合は
+     * Firestore読込不要
+     */
     if (!id || passedPropertyData) {
       return;
     }
+
+    let isActive = true;
 
     const loadProperty = async () => {
       try {
@@ -34,28 +57,53 @@ function PhotoNumberPage() {
 
         const propertySnapshot = await getDoc(propertyReference);
 
+        if (!isActive) {
+          return;
+        }
+
         if (!propertySnapshot.exists()) {
           setError("物件データが見つかりません。");
+
           return;
         }
 
         setPropertyData({
           id: propertySnapshot.id,
+
           ...propertySnapshot.data(),
         });
       } catch (loadError) {
         console.error("物件読み込みエラー:", loadError);
 
-        setError(
-          `物件を読み込めませんでした：${loadError.code || loadError.message}`,
-        );
+        if (!isActive) {
+          return;
+        }
+
+        const errorText =
+          loadError instanceof Error ? loadError.message : String(loadError);
+
+        setError(`物件を読み込めませんでした：${errorText}`);
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadProperty();
+
+    return () => {
+      isActive = false;
+    };
   }, [id, passedPropertyData]);
+
+  /* =======================================================
+   * 戻る
+   *
+   * 既存物件なら編集画面
+   *
+   * 新規なら新規物件画面
+   * ======================================================= */
 
   const handleBack = () => {
     if (propertyData?.id) {
@@ -65,13 +113,7 @@ function PhotoNumberPage() {
         },
       });
 
-      return (
-        <PhotoNumberForm
-          key={propertyData.id || "new"}
-          propertyData={propertyData}
-          onSaved={handleSaved}
-        />
-      );
+      return;
     }
 
     navigate("/property/new", {
@@ -81,13 +123,25 @@ function PhotoNumberPage() {
     });
   };
 
+  /* =======================================================
+   * 保存完了
+   * ======================================================= */
+
   const handleSaved = () => {
     navigate("/");
   };
 
+  /* =======================================================
+   * 読込中
+   * ======================================================= */
+
   if (isLoading) {
     return <p>読み込み中...</p>;
   }
+
+  /* =======================================================
+   * エラー
+   * ======================================================= */
 
   if (error) {
     return (
@@ -101,6 +155,10 @@ function PhotoNumberPage() {
     );
   }
 
+  /* =======================================================
+   * 物件データなし
+   * ======================================================= */
+
   if (!propertyData) {
     return (
       <section>
@@ -112,6 +170,10 @@ function PhotoNumberPage() {
       </section>
     );
   }
+
+  /* =======================================================
+   * 写真番号入力画面
+   * ======================================================= */
 
   return (
     <PhotoNumberForm
